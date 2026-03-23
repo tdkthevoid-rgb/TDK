@@ -51,6 +51,16 @@
       pointer-events: none;
       white-space: nowrap;
     }
+    #logo {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 60px;
+      height: auto;
+      opacity: 0.85;
+      pointer-events: none;
+      z-index: 50;
+    }
   </style>
 </head>
 <body>
@@ -60,6 +70,7 @@
   <span id="loading-msg">読み込み中...</span>
 </div>
 
+<img id="logo" src="0110.png" alt="logo">
 <div id="hint">ドラッグ で回転 &nbsp;|&nbsp; スクロール / ピンチ でズーム</div>
 
 <script type="importmap">
