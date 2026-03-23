@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>3D Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -51,16 +53,100 @@
       pointer-events: none;
       white-space: nowrap;
     }
+
+    /* ── Logo ── */
     #logo {
       position: fixed;
       top: 16px;
-      right: 16px;
+      left: 20px;
       width: 60px;
       height: auto;
       opacity: 0.85;
       pointer-events: none;
       z-index: 50;
     }
+
+    /* ── Nav ── */
+    #nav {
+      position: fixed;
+      top: 18px;
+      right: 20px;
+      display: flex;
+      gap: 6px;
+      z-index: 50;
+      align-items: center;
+    }
+
+    .nav-btn {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 13px;
+      letter-spacing: 0.18em;
+      color: rgba(255, 255, 255, 0.75);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 7px 16px;
+      border-radius: 2px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      position: relative;
+      overflow: hidden;
+      transition:
+        color 0.25s ease,
+        border-color 0.25s ease,
+        background 0.25s ease;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    /* shimmer fill on hover */
+    .nav-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        110deg,
+        transparent 20%,
+        rgba(255,255,255,0.08) 50%,
+        transparent 80%
+      );
+      transform: translateX(-100%);
+      transition: transform 0.45s ease;
+    }
+    .nav-btn:hover::before {
+      transform: translateX(100%);
+    }
+
+    .nav-btn:hover {
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.5);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* active / pressed */
+    .nav-btn:active {
+      transform: scale(0.96);
+    }
+
+    /* separator dots between buttons */
+    .nav-sep {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      flex-shrink: 0;
+    }
+
+    /* staggered fade-in */
+    @keyframes navIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .nav-btn:nth-child(1) { animation: navIn 0.5s 0.1s both ease-out; }
+    .nav-sep:nth-child(2) { animation: navIn 0.5s 0.18s both ease-out; }
+    .nav-btn:nth-child(3) { animation: navIn 0.5s 0.22s both ease-out; }
+    .nav-sep:nth-child(4) { animation: navIn 0.5s 0.30s both ease-out; }
+    .nav-btn:nth-child(5) { animation: navIn 0.5s 0.34s both ease-out; }
   </style>
 </head>
 <body>
@@ -71,6 +157,16 @@
 </div>
 
 <img id="logo" src="0110.png" alt="logo">
+
+<!-- ── Navigation ── -->
+<nav id="nav">
+  <a class="nav-btn" href="clothes.html">Clothes</a>
+  <span class="nav-sep"></span>
+  <a class="nav-btn" href="music.html">Music</a>
+  <span class="nav-sep"></span>
+  <a class="nav-btn" href="musicvideos.html">Music Videos</a>
+</nav>
+
 <div id="hint">ドラッグ で回転 &nbsp;|&nbsp; スクロール / ピンチ でズーム</div>
 
 <script type="importmap">
@@ -164,7 +260,6 @@ function addObject(object) {
   controls.maxDistance = dist * 5;
   controls.update();
 
-  // Downscale textures to max 1024px
   const MAX_TEX = 1024;
   object.traverse((child) => {
     if (!child.isMesh) return;
@@ -241,7 +336,6 @@ mtlLoader.load(
   },
   undefined,
   (err) => {
-    // MTL failed — try loading OBJ without materials
     console.warn('MTL load failed, falling back to no-material load:', err);
     loadOBJOnly();
   }
