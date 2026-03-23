@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>3D Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0f url('S__2467405.jpg') center center / cover no-repeat fixed;
+      overflow: hidden;
+      font-family: 'Helvetica Neue', sans-serif;
+    }
+    canvas { display: block; }
+
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.6);
+      color: rgba(255,255,255,0.6);
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      z-index: 100;
+      transition: opacity 0.6s;
+    }
+    #loading.hidden { opacity: 0; pointer-events: none; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 2px solid rgba(255,255,255,0.1);
+      border-top-color: rgba(255,255,255,0.7);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+    #loading.error .spinner { display: none; }
+    #loading.error { color: rgba(255,100,100,0.9); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #hint {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.35);
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <span id="loading-msg">読み込み中...</span>
+</div>
+
+<div id="hint">ドラッグ で回転 &nbsp;|&nbsp; スクロール / ピンチ でズーム</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const loadingEl = document.getElementById('loading');
+const loadingMsg = document.getElementById('loading-msg');
+
+function setMsg(msg) { loadingMsg.textContent = msg; }
+function showError(msg) {
+  loadingEl.classList.add('error');
+  loadingMsg.textContent = msg;
+}
+function hideLoading() {
+  loadingEl.classList.add('hidden');
+  setTimeout(() => loadingEl.remove(), 700);
+}
+
+// --- Renderer ---
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+// --- Scene ---
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 1000);
+camera.position.set(0, 0, 3);
+
+// --- Controls ---
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.zoomSpeed = 3.0;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.8;
+renderer.domElement.addEventListener('pointerdown', () => { controls.autoRotate = false; });
+
+// --- Env map ---
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+
+// --- Lights ---
+scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+dirLight.position.set(5, 8, 5);
+dirLight.castShadow = true;
+scene.add(dirLight);
+
+// --- Grid ---
+const grid = new THREE.GridHelper(20, 40, 0x333355, 0x222233);
+scene.add(grid);
+
+// --- Fit and add object to scene ---
+function addObject(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const scale = 2.5 / maxDim;
+
+  object.scale.setScalar(scale);
+  object.position.sub(center.multiplyScalar(scale));
+
+  const box2 = new THREE.Box3().setFromObject(object);
+  object.position.y -= box2.min.y;
+  grid.position.y = box2.min.y - 0.01;
+
+  const dist = maxDim * scale * 1.8;
+  camera.position.set(0, size.y * scale * 0.5, dist);
+  controls.target.set(0, size.y * scale * 0.3, 0);
+  controls.minDistance = dist * 0.2;
+  controls.maxDistance = dist * 5;
+  controls.update();
+
+  // Downscale textures to max 1024px
+  const MAX_TEX = 1024;
+  object.traverse((child) => {
+    if (!child.isMesh) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+    const mat = child.material;
+    if (mat && mat.map) {
+      const tex = mat.map;
+      if (tex.image && (tex.image.width > MAX_TEX || tex.image.height > MAX_TEX)) {
+        const canvas = document.createElement('canvas');
+        const s = MAX_TEX / Math.max(tex.image.width, tex.image.height);
+        canvas.width  = Math.round(tex.image.width  * s);
+        canvas.height = Math.round(tex.image.height * s);
+        canvas.getContext('2d').drawImage(tex.image, 0, 0, canvas.width, canvas.height);
+        tex.image = canvas;
+        tex.needsUpdate = true;
+      }
+    }
+  });
+
+  scene.add(object);
+  hideLoading();
+}
+
+// --- Load OBJ (fallback: no materials) ---
+function loadOBJOnly() {
+  setMsg('テクスチャなしで読み込み中...');
+  const objLoader = new OBJLoader();
+  objLoader.setPath('tdbn/');
+  objLoader.load(
+    'Scaniverse_2025_05_09_235543.obj',
+    (object) => addObject(object),
+    (xhr) => {
+      if (xhr.total > 0) {
+        const pct = Math.round(xhr.loaded / xhr.total * 100);
+        setMsg(`読み込み中... ${pct}%`);
+      }
+    },
+    (err) => {
+      console.error('OBJ load error:', err);
+      showError('読み込みエラー\nファイルが見つかりません。\nserver.py でローカルサーバーを起動してください。');
+    }
+  );
+}
+
+// --- Load MTL + OBJ ---
+const mtlLoader = new MTLLoader();
+mtlLoader.setPath('tdbn/');
+setMsg('マテリアル読み込み中...');
+
+mtlLoader.load(
+  'Scaniverse_2025_05_09_235543.mtl',
+  (materials) => {
+    materials.preload();
+    setMsg('モデル読み込み中... 0%');
+
+    const objLoader = new OBJLoader();
+    objLoader.setMaterials(materials);
+    objLoader.setPath('tdbn/');
+    objLoader.load(
+      'Scaniverse_2025_05_09_235543.obj',
+      (object) => addObject(object),
+      (xhr) => {
+        if (xhr.total > 0) {
+          const pct = Math.round(xhr.loaded / xhr.total * 100);
+          setMsg(`モデル読み込み中... ${pct}%`);
+        }
+      },
+      (err) => {
+        console.error('OBJ load error:', err);
+        showError('読み込みエラー\nserver.py でローカルサーバーを起動してください。');
+      }
+    );
+  },
+  undefined,
+  (err) => {
+    // MTL failed — try loading OBJ without materials
+    console.warn('MTL load failed, falling back to no-material load:', err);
+    loadOBJOnly();
+  }
+);
+
+// --- Resize ---
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// --- Animate ---
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
